@@ -1,0 +1,167 @@
+#!/usr/bin/python
+
+# A script to pull the initial and final geometries of finished MECPro jobs that converged
+# Will put into a file readable by GaussView
+
+import argparse
+import sys
+import os
+from os import listdir
+from os.path import isfile, isdir
+
+''' Error thrown when there's no energy found in the log file. '''
+class NoDataError(Exception):
+	def __init__(self, value):
+		self.value = value
+	def __str__(self):
+		return repr(self.value)
+		
+''' Actually extracts the geometry, looking for a newline to break the geometry section.
+	@param logfile - The open file to be extracted from.
+	@param keyword - The keyword that signifies the start of a section to extract from. '''
+def getGeo(logfile, keyword):
+	found = False
+	for line in logfile:
+		if keyword in line:
+			found = True
+			break
+	if not found:
+		print "Keyword/phrase: '" + keyword + "' not found in this file!"
+		raise NoDataError("Keyword/phrase: '" + keyword + "' not found in this file!")
+	geo = []
+	for line in logfile:
+		if line == "\n":
+			break
+		geo.append(line)
+	return geo
+
+''' Gets the initial geometry from a logfile.
+	@param logfile - The open file to be extracted from. '''
+def getInitialGeo(logfile):
+	return getGeo(logfile, "Initial Geometry")
+
+''' Gets the final geometry from a logfile.
+	@param logfile - The open file to be extracted from. '''
+def getFinalGeo(logfile):
+	return getGeo(logfile, "Final Geometry")
+
+''' '''
+def getEnergies(logfile):
+	logfile.seek(0)
+	found = False
+	e1 = "Energy of first spin state"
+	e2 = "Energy of second spin state"
+	t1 = ""
+	t2 = ""
+	for line in logfile:
+		if "CONVERGENCE FOUND!" in line:
+			found = True
+			break
+		if e1 in line:
+			t1 = line
+		if e2 in line:
+			t2 = line
+	if not found:	# keyword not found!
+		print logfile + " was not convergent!"
+		raise NoDataError("Keyword/phrase 'CONVERGENCE FOUND!' was not found in this file. Did this job converge?")
+	return t1[:-1], t2[:-1]
+	
+''' Search directories for log files that may be deep in *.next folders.
+	Take the .log from the deepest .next with the same name.
+	@param logfile - The name of the file to be searched for. '''
+def findFinalLog(logfile):
+	next = True
+	dirName = logfile[:-4] + ".next"
+	times = 0
+	while (next):
+		dirs = [d for d in listdir(".") if isdir(d)]
+		if dirName in dirs:
+			os.chdir(dirName)
+			times+=1
+			dirName += ".next"
+		else:
+			next = False
+			dirName = dirName[:-5]
+	finalgeo = []
+	e1 = "No first energy found"
+	e2 = "No second energy found"
+	if dirName + ".log" in listdir("."):
+		with open(dirName + ".log", "r") as log:
+			e1, e2 = getEnergies(log)
+			finalgeo = getFinalGeo(log)
+	else:
+		print "no .log found with name: " + dirName
+		raise NoDataError("No final log file found while traversing *.next directories.")
+	for _ in range(times):
+		os.chdir("..")
+	return finalgeo, e1, e2
+
+''' Extracts the geometry from the .log file. 
+	@param logfile - The name of the .log to be parsed. '''
+def extractGeometries(logfile):
+	# Open .log file and search each line for keyword/phrase
+	with open(logfile, "r") as logread:
+		found = False
+		for line in logread:
+			if "CONVERGENCE FOUND!" in line:
+				found = True
+				break
+		if not found:	# keyword not found!
+			print logfile + " was not convergent!"
+			raise NoDataError("Keyword/phrase 'CONVERGENCE FOUND!' was not found in this file. Did this job converge?")
+		# Start reading geometries
+		initialLines = getInitialGeo(logread)
+		finalLines, e1, e2 = findFinalLog(logfile)
+		return initialLines, finalLines, e1, e2
+
+''' Creates a .gjf file and writes the geometry to it.
+	@param fileName - The name of the file without the .log extension
+	@param type - Either 'initial' or 'final'
+	@param data - The lines of the geometry to be written in (list format) '''
+def makeFile(fileName, type, data):
+	header = type.upper() + " geometry for " + fileName
+	mid = "0 1"	# Random required mid section
+	fileName = fileName + "-" + type + ".gjf"
+	with open(fileName, "w+") as file:
+		file.write(header)
+		file.write("\n\n")
+		file.write(mid)
+		file.write("\n\n")
+		for line in data:
+			file.write(line)
+		print "Made file " + fileName
+
+''' Takes a file.log and works on it. 
+	@logfile - the name of the .log to be worked on. '''
+def runJob(logfile):
+	exitcode = 0
+	try:
+		initialLines, finalLines, e1, e2 = extractGeometries(logfile)
+		makeFile(logfile[:-4], "initial", initialLines)
+		makeFile(logfile[:-4], "final", finalLines)
+		print e1
+		print e2
+	except NoDataError as e:
+		exitcode = e.value
+	return exitcode
+
+''' Starting point of the script. Accepts an "-a" flag to run this script on all .log files in the current directory. '''
+if __name__ == "__main__":
+	# add the option for a flag to get ALL .log files instead of just specifying one
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-f", "--file", \
+					help="Run the script on a single specified file")
+	args = parser.parse_args()
+	if args.file:
+		logfile = args.file
+		if logfile.endswith(".log"):
+			runJob(logfile)
+		else:
+			print "Invalid file! Please make sure you enter a .log file..."
+	else:
+		onlyfiles = [f for f in listdir(".") if isfile(f)]
+		# Make a list of files that end with ".log" but aren't "_A.log" or "_B.log"
+		logfiles = [file for file in onlyfiles if (file.endswith(".log") and (not file.endswith("_A.log") and not file.endswith("_B.log")))]
+		for file in logfiles:
+			runJob(file)
+	sys.exit()

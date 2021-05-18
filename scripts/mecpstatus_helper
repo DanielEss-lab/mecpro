@@ -1,0 +1,62 @@
+#!/bin/bash
+
+showhelp ()
+{
+   echo "USAGE:  $(basename $0) [options]"
+   echo
+   echo "Available options:"
+   echo "	-v				include information on all files, not just converged files"
+
+}
+verbose=false
+while getopts "hv" opt; do
+   case $opt in
+      h)
+         showhelp
+         exit 0
+         ;;
+	  v)
+		 verbose=true
+		 ;;
+      \?)
+         echo "Invalid option: -$OPTARG"
+         showhelp
+         exit 1
+         ;;
+      :)
+         echo "No argument given for -$OPTARG"
+         showhelp
+         exit 1
+         ;;
+   esac
+done
+name=${PWD##*/} 
+if test -f "$name.mecp"; then
+  if ls *.out > /dev/null 2>&1; then
+    if test -f "$name.log"; then
+      if grep -q 'CONVERGENCE FOUND!' "$name.log"; then
+		if ! $verbose; then
+			echo "$name"
+		fi
+        echo "Converged"|column -t
+      else
+		if $verbose; then
+			awk -v N=1 -v pattern="Run terminated" '{i=(1+(i%N));if (buffer[i]&& $0 ~ pattern) print buffer[i]; buffer[i]=$0;}' "$name.log"
+			#awk '/STEP/{a=$0}END{print a}' OCH.log
+		fi
+      fi
+    else
+	  if $verbose; then
+        echo "No logs. Either running or had a format error."
+	  fi
+    fi
+  else
+    if $verbose; then
+      echo 'Never submitted or pending on queue'
+	fi
+  fi
+else
+  if $verbose; then
+    echo "No matching .mecp file with name $name.mecp"
+  fi
+fi

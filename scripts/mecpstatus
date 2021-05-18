@@ -1,0 +1,107 @@
+#!/bin/bash
+showhelp ()
+{
+   echo "USAGE:  $(basename $0) [options]"
+   echo
+   echo "Available options:"
+   echo "   -d <directory>  set the directory of mecp run outputs"
+   echo "	-v				include information on all files, not just converged files"
+
+}
+
+verbose=false
+
+while getopts "hd:v" opt; do
+   case $opt in
+      d) 
+         job_dir=$OPTARG
+         ;;
+      h)
+         showhelp
+         exit 0
+         ;;
+	  v)
+		 verbose=true
+		 ;;
+      \?)
+         echo "Invalid option: -$OPTARG"
+         showhelp
+         exit 1
+         ;;
+      :)
+         echo "No argument given for -$OPTARG"
+         showhelp
+         exit 1
+         ;;
+   esac
+done
+
+_next='_next'
+#if -d flag left empty use current directory
+if test -z $job_dir ; then
+  job_dir=$(pwd)
+fi
+
+depth=0
+
+buildTab()
+{
+	str=$(printf "%*s" $depth '')
+	echo "$str"
+}
+
+helper()
+{
+	if $1; then
+		mecpstatus_helper -v
+	else
+		mecpstatus_helper
+	fi
+}
+
+doStatus()
+{
+	((depth++))
+	subdircount=`find . -maxdepth 1 -type d | wc -l`
+	# -type d = File is of type d (directory)
+	# wc -l = print only # of new-lines
+	#echo "Subdircount for $1 is $subdircount"
+	if [ $subdircount -eq 1 ]; then
+		#echo "Doing mecpstatus on $1 dir"
+		helper $verbose
+	else
+		for dir in `ls -d */` ; do 
+			tabs=$(buildTab)
+			if $verbose; then
+				echo -e "$tabs$dir"
+			fi
+			cd "$dir"
+			jobname=${PWD##*/}          # working directory is the jobname
+			if test -d "$jobname$_next"; then
+				mecpcheck -d "$jobname$_next"
+			else
+				#echo "Doing mecpstatus for $dir in for loop"
+				helper $verbose
+			fi
+			if [ `find . -maxdepth 1 -type d | wc -l` -gt 1 ]; then
+				# echo
+				doStatus "$dir"
+			fi
+			cd ..
+		done
+	fi
+	((depth--))
+}
+
+# if the job_dir variable given
+if test -e $job_dir ; then
+   #check if directory exists
+    if test -d "$job_dir" ; then
+		doStatus $job_dir
+	else
+      echo "Directory does not exist"
+    fi
+else
+    echo 'No directory given'
+    exit 1
+fi

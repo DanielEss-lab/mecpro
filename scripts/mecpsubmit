@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+
+# A script to pull all '*.mecp' files in the current directory and submit them
+from os import listdir
+from os.path import isfile, join
+import subprocess
+import argparse
+import sys
+
+
+def submitJobs(hours, cores, memory):
+	onlyfiles = [f for f in listdir(".") if isfile(f)]
+	mecpfiles = [file[:-5] for file in onlyfiles if file.endswith(".mecp")]
+	#for file in onlyfiles:
+	#	if file.endswith(".mecp"):
+	#		mecpfiles.append(file[:-5])
+	for mecp in mecpfiles:
+		cmd = ["mecpstart", "-H", str(hours), "-c", str(cores), "-m", str(memory), "-I", mecp]
+		excode = subprocess.call(cmd)
+	
+def getNum(msg):
+	invalidNum = "Not a number! Make sure you're entering a valid number."
+	result = 0
+	while True:
+		print msg
+		try:
+			userInput = int(raw_input())
+		except ValueError:
+			print invalidNum
+			continue
+		else:
+			result = userInput
+			break
+	return result
+	
+def getHours():
+	msg = "How many hours do you expect this job to take? (Default is 24)"
+	return getNum(msg)
+	
+def getCores():
+	msg = "How many cores do you need? (Default is 12)"
+	return getNum(msg)
+
+def getMemory():
+	msg = "How much memory do you need, in GB? (Default is 12)"
+	return getNum(msg)
+	
+def setValues():
+	hours = 24
+	cores = 12
+	memory = 12
+	while True:
+		hours = getHours()
+		cores = getCores()
+		memory = getMemory()
+		displaySettings(hours, cores, memory)
+		print "Is this correct? [y/n/q]"
+		correct = raw_input()
+		if correct == "y":
+			break
+		if correct == "n":
+			continue
+		if correct == "q":
+			sys.exit()
+	return hours, cores, memory
+	
+def displaySettings(hours, cores, memory):
+	print " Using the following settings: "
+	print '{:10}{:>5}'.format("Walltime:", str(hours))
+	print '{:10}{:>5}'.format("Cores:", str(cores))
+	print '{:10}{:>5}'.format("Memory:", str(memory))
+	
+if __name__ == "__main__":
+	hours = 24
+	cores = 12
+	memory = 12
+	while True:
+		hours = getHours()
+		displaySettings(hours, cores, memory)
+		print "Is this correct? [y/n/q]"
+		answer = raw_input()
+		if answer == "y":
+			break
+		elif answer == "n":
+			hours, cores, memory = setValues()
+			break
+		elif answer == "q":
+			sys.exit()
+		else:
+			print "Please enter a valid letter..."
+	submitJobs(hours, cores, memory)
+	
+	'''
+	submit = True
+	while True:
+		print "Do you want to submit all jobs? [y/n/q]"
+		answer = raw_input()
+		if answer == "y":
+			break
+		if answer == "n":
+			submit = False
+			break
+		if answer == "q":
+			sys.exit()
+	submitJobs(hours, cores, memory, submit)
+	'''
